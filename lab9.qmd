@@ -1,0 +1,97 @@
+---
+title: "Lab9"
+author: "Haoyu Yu"
+format: html
+editor: visual
+embed-resources: true
+---
+
+## Problem 1: Vectorization
+
+1.  This function generates an n x k dataset with all its entries drawn from a Poission distribution with mean lambda.
+
+```{r}
+fun1 <- function(n = 100, k = 4, lambda = 4) {
+  x <- NULL
+  
+  for (i in 1:n){
+    x <- rbind(x, rpois(k, lambda))    
+  }
+  
+  return(x)
+}
+
+fun1alt <- function(n = 100, k = 4, lambda = 4) {
+  x <- matrix(rpois(n * k, lambda), nrow = n, ncol = k)
+  return(x)
+}
+```
+
+```{r}
+microbenchmark::microbenchmark(
+  fun1(),
+  fun1alt()
+)
+
+set.seed(999)
+result_fun1 <- fun1(n = 100, k = 4, lambda = 4)
+result_fun1alt <- fun1alt(n = 100, k = 4, lambda = 4)
+dim(result_fun1alt)
+dim(result_fun1)
+mean(result_fun1)
+mean(result_fun1alt)
+var(as.vector(result_fun1))
+var(as.vector(result_fun1alt))
+
+```
+
+2.  This function finds the maximum value of each column of a matrix (hint: check out the max.col() function).
+
+```{r}
+fun2 <- function(x) {
+  apply(x, 2, max)
+}
+
+fun2alt <- function(x) {
+  x[cbind(max.col(t(x)), seq_len(ncol(x)))]
+}
+set.seed(999)
+x <- matrix(rnorm(1000), nrow = 10)
+identical(fun2(x), fun2alt(x))
+microbenchmark::microbenchmark(
+  fun2(x),
+  fun2alt(x)
+)
+```
+
+## Problem 3: Parallelization
+
+```{r}
+library(parallel)
+my_boot <- function(dat, stat, R, ncpus = 1L) {
+  n <- nrow(dat)
+  idx <- matrix(sample.int(n, n*R, TRUE), nrow=n, ncol=R)
+  cl <- makeCluster(ncpus)
+  clusterExport(cl, varlist = c("dat", "stat", "idx"), envir = environment())
+  ans <- parLapply(cl, seq_len(R), function(i) {
+    stat(dat[idx[, i], , drop = FALSE])
+  })
+  stopCluster(cl)
+  ans <- do.call(rbind, ans)
+  return(ans)
+}
+
+my_stat <- function(d) coef(lm(y ~ x, data=d))
+set.seed(1)
+n <- 500; R <- 1e4
+x <- cbind(rnorm(n)); y <- x*5 + rnorm(n)
+ans0 <- confint(lm(y~x))
+ans1 <- my_boot(dat = data.frame(x, y), my_stat, R = R, ncpus = 2L)
+t(apply(ans1, 2, quantile, c(.025,.975)))
+ans0
+```
+
+```{r}
+system.time(my_boot(dat = data.frame(x, y), my_stat, R = 4000, ncpus = 1L))
+system.time(my_boot(dat = data.frame(x, y), my_stat, R = 4000, ncpus = 2L))
+```
